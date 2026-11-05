@@ -9,6 +9,8 @@ name: Build ISO image
 
 on:
   push:
+    branches: [master, main, arena/689c3d3a-zonix]
+  pull_request:
     branches: [master, main]
   workflow_dispatch:
 

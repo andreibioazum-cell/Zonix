@@ -1,0 +1,44 @@
+# Конфигурация kde-builder для автоматической сборки KDE Plasma 6.8
+# Поместите в ~/.config/kde-builderrc или запустите с --rc-file
+#
+# Использование:
+#   kde-builder --rc-file scripts/kde-builder.rc
+#   или
+#   cp scripts/kde-builder.rc ~/.config/kde-builderrc
+#   kde-builder
+
+[global]
+# Директория для исходного к码
+source-dir = $HOME/kde-src
+# Директория для сборки
+build-dir = $HOME/kde-build
+# Директория установки
+install-dir = /usr/local
+# Количество потоков
+jobs = $(nproc)
+# Лог-файл
+log-dir = $HOME/kde-build/logs
+
+# Модули KDE Plasma 6.8 для сборки
+module-groups = plasma-frameworks plasma-desktop plasma-workspace
+
+[plasma-frameworks]
+include-modules =
+    karchive kauth kcodecs kcompletion kconfig kconfigwidgets
+    kcoreaddons kcrash kdbusaddons kglobalaccel kguiaddons ki18n
+    kiconthemes kitemmodels kitemviews kjobwidgets kcmutils kdeclarative
+    ki18n kio knewstuff notifications package parts runner service
+    textwidgets widgetsaddons windowsystem xmlgui
+
+[plasma-desktop]
+include-modules =
+    plasma-desktop plasma-workspace kwin
+
+# Параметры CMake
+cmake-options = -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local
+
+# После сборки устанавливать
+install = true
+
+# Использовать ccache для ускорения повторных сборок
+use-ccache = true

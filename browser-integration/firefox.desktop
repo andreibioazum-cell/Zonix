@@ -1,0 +1,24 @@
+[Desktop Entry]
+Name=Firefox Web Browser
+Comment=Browse the World Wide Web
+GenericName=Web Browser
+X-GNOME-FullName=Firefox Web Browser
+Exec=firefox %u
+Icon=firefox
+Terminal=false
+Type=Application
+MimeType=text/html;text/xml;application/xhtml+xml;application/vnd.mozilla.xul+xml;text/mml;x-scheme-handler/http;x-scheme-handler/https;
+StartupNotify=true
+Categories=Network;WebBrowser;Internet;
+Keywords=web;browser;internet;
+Actions=new-window;new-private-window;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=firefox --new-window
+Icon=firefox
+
+[Desktop Action new-private-window]
+Name=New Private Window
+Exec=firefox --private-window
+Icon=firefox

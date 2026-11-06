@@ -1,7 +1,4 @@
-# SPDX-FileCopyrightText: KDE community and original developers
-# SPDX-License-Identifier: CC0-1.0
-
-name: Build bootable ISO and HDD images
+name: Build ISO image
 
 on:
   push:
@@ -12,28 +9,25 @@ permissions:
   contents: read
 
 jobs:
-  build-images:
+  build-iso:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
       - name: Install tools
-        run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends \
-            grub-common grub-pc-bin xorriso mtools dosfstools zip
+        run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends grub-common grub-pc-bin xorriso zip
 
-      - name: Prepare ISO content with GRUB config
+      - name: Prepare ISO content
         run: |
           mkdir -p iso-content/boot/grub
-          cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
-          cp -a docs/BEST_DISTRO.md iso-content/ 2>/dev/null || true
-          cp -a docs/BUILD_FROM_SOURCE.md iso-content/ 2>/dev/null || true
-          echo 'set timeout=5' > iso-content/boot/grub/grub.cfg
+          echo 'set timeout=10' > iso-content/boot/grub/grub.cfg
           echo 'set default=0' >> iso-content/boot/grub/grub.cfg
           echo '' >> iso-content/boot/grub/grub.cfg
           echo 'menuentry ZonixLiveISO {' >> iso-content/boot/grub/grub.cfg
           echo '  echo "Zonix ISO - KDE Plasma sources"' >> iso-content/boot/grub/grub.cfg
           echo '  echo "Not a bootable operating system"' >> iso-content/boot/grub/grub.cfg
+          echo '  halt' >> iso-content/boot/grub/grub.cfg
           echo '}' >> iso-content/boot/grub/grub.cfg
           echo '' >> iso-content/boot/grub/grub.cfg
           echo 'menuentry Reboot {' >> iso-content/boot/grub/grub.cfg
@@ -43,22 +37,13 @@ jobs:
       - name: Build bootable ISO with grub-mkrescue
         run: grub-mkrescue -o zonix.iso iso-content/ || true
 
-      - name: Create raw HDD image (NOT bootable - let BIOS fall through to CD)
-        run: |
-          dd if=/dev/zero of=zonix-hdd.img bs=1M count=50
-          echo "HDD image size: $(stat -c%s zonix-hdd.img) bytes"
-          echo "No boot signature on HDD - BIOS will fall through to CD ISO"
-
-      - name: Verify outputs
+      - name: Verify ISO
         run: |
           test -f zonix.iso || { echo "ERROR: zonix.iso missing" >&2; exit 1; }
-          test -f zonix-hdd.img || { echo "ERROR: zonix-hdd.img missing" >&2; exit 1; }
           echo "ISO size: $(stat -c%s zonix.iso) bytes"
-          echo "HDD size: $(stat -c%s zonix-hdd.img) bytes"
-          file zonix.iso zonix-hdd.img
 
-      - name: Package images into zip
-        run: zip -r zonix-release.zip zonix.iso zonix-hdd.img
+      - name: Package into zip
+        run: zip -r zonix-release.zip zonix.iso
 
       - uses: actions/upload-artifact@v4
         with:

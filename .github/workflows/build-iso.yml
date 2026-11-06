@@ -68,13 +68,14 @@ print(f'Signature: {hex(data[510])}{hex(data[511])}')
       - name: Build bootable ISO with MBR as El Torito image
         run: |
           cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
+          cp mbr.bin iso-content/boot/grub/mbr.bin
           xorriso -as mkisofs \
             -iso-level 3 \
             -full-iso9660-filenames \
             -volid "ZONIX" \
             -boot-load-size 1 \
             -boot-info-table \
-            -eltorito-boot mbr.bin \
+            -eltorito-boot boot/grub/mbr.bin \
             -no-emul-boot \
             -output zonix.iso \
             iso-content/ || true

@@ -1,4 +1,7 @@
-name: Build ISO image
+# SPDX-FileCopyrightText: KDE community and original developers
+# SPDX-License-Identifier: CC0-1.0
+
+name: Build bootable ISO image
 
 on:
   push:
@@ -16,18 +19,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install tools
-        run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends grub-common grub-pc-bin xorriso zip
+        run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends \
+            grub-common grub-pc-bin xorriso mtools dosfstools zip
 
-      - name: Prepare ISO content
+      - name: Prepare ISO content with GRUB config
         run: |
           mkdir -p iso-content/boot/grub
+          cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
           echo 'set timeout=10' > iso-content/boot/grub/grub.cfg
           echo 'set default=0' >> iso-content/boot/grub/grub.cfg
           echo '' >> iso-content/boot/grub/grub.cfg
           echo 'menuentry ZonixLiveISO {' >> iso-content/boot/grub/grub.cfg
           echo '  echo "Zonix ISO - KDE Plasma sources"' >> iso-content/boot/grub/grub.cfg
           echo '  echo "Not a bootable operating system"' >> iso-content/boot/grub/grub.cfg
-          echo '  halt' >> iso-content/boot/grub/grub.cfg
           echo '}' >> iso-content/boot/grub/grub.cfg
           echo '' >> iso-content/boot/grub/grub.cfg
           echo 'menuentry Reboot {' >> iso-content/boot/grub/grub.cfg

@@ -43,10 +43,19 @@ jobs:
       - name: Build bootable ISO with grub-mkrescue
         run: grub-mkrescue -o zonix.iso iso-content/ || true
 
-      - name: Create raw HDD image
+      - name: Create raw HDD image with boot sector
         run: |
+          # Create 50MB raw image filled with zeros
           dd if=/dev/zero of=zonix-hdd.img bs=1M count=50
+
+          # Write boot signature 0x55AA at offset 510 (makes disk bootable)
+          printf '\x55\xAA' | dd of=zonix-hdd.img bs=1 seek=510 conv=notrunc
+
+          # Add minimal boot code: infinite loop (jmp $+2, nop)
+          printf '\xEB\xFE\x90' | dd of=zonix-hdd.img bs=1 count=3 conv=notrunc
+
           echo "HDD image size: $(stat -c%s zonix-hdd.img) bytes"
+          xxd -l 64 zonix-hdd.img
 
       - name: Verify outputs
         run: |

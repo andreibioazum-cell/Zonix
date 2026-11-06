@@ -117,12 +117,31 @@ sudo make install
 
 Документация: https://community.kde.org/Get_Involved/development/Set_up_kde-builder
 
-## 6. Что уже есть в этом репозитории
+## 6. Скрипты automatзации сборки (в этом репозитории)
+
+В папке `scripts/` готовые скрипты для самостоятельной сборки:
+
+| Скрипт | Что делает |
+|--------|------------|
+| `scripts/build-kde-plasma.sh` | Клонирует и собирает Plasma Desktop, KWin, все 69 модулей KDE Frameworks 6.8 |
+| `scripts/build-kernel.sh` | Клонирует и собирает ядро Linux с настройкой конфигурации |
+| `scripts/kde-builder.rc` | Конфигурационный файл для утилиты kde-builder |
+
+Пример запуска:
+
+```bash
+chmod +x scripts/build-kde-plasma.sh scripts/build-kernel.sh
+./scripts/build-kde-plasma.sh    # собирает Plasma из исходников
+./scripts/build-kernel.sh        # собирает ядро Linux из исходников
+```
+
+## 7. Что уже есть в этом репозитории
 
 В ветке `arena/3cf9175c-zonix` (PR #2) настроен GitHub Actions workflow `.github/workflows/build-iso.yml`, который:
 
-- Собирает загрузочный ISO-образ с GRUB-загрузчиком (El Torito)
+- Собирает загрузочный ISO-образ с MBR-загрузчиком (печать "Zonix ISO Boot Sector" + HLT)
 - Создаёт raw-образ HDD-диска 50 МБ с загрузочной сигнатурой 0x55AA
 - Пакет `zonix-release.zip` загружается как артефакт GitHub Actions
 
 Этот ISO — не полноценная ОС. Для работы нужна установленная система (например, KDE Neon — самый оптимизированный дистрибутив для Plasma, см. `docs/BEST_DISTRO.md`).
+

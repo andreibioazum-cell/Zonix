@@ -1,0 +1,16 @@
+[Desktop Entry]
+Name=Zonix Plasma Desktop
+Comment=Zonix OS - KDE Plasma 6.8 Desktop Environment
+Icon=zonix
+Type=Service
+X-Plasma-Api=declarativescript
+X-Plasma-MainScript=ui/main.qml
+X-Plasma-NotificationArea=true
+X-Plasma-Containments=1
+X-KDE-PluginInfo-Author=Zonix Development Team
+X-KDE-PluginInfo-Email=dev@zonix.org
+X-KDE-PluginInfo-Name=zonix-desktop
+X-KDE-PluginInfo-Version=6.8.0
+X-KDE-PluginInfo-Website=https://github.com/andreibioazum-cell/Zonix
+X-KDE-PluginInfo-License=GPL
+X-KDE-PluginInfo-EnabledByDefault=true

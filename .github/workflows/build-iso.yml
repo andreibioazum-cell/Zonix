@@ -26,6 +26,11 @@ jobs:
           mkdir -p iso-content
           cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
           cp -a docs/BEST_DISTRO.md iso-content/ 2>/dev/null || true
+          cp -a docs/BUILD_FROM_SOURCE.md iso-content/ 2>/dev/null || true
+          cp -a plasma-desktop iso-content/ 2>/dev/null || true
+          cp -a browser-integration iso-content/ 2>/dev/null || true
+          cp -a assets iso-content/ 2>/dev/null || true
+          cp -a docs/BEST_DISTRO.md iso-content/ 2>/dev/null || true
 
       - name: Create MBR boot sector (prints message + HLT)
         run: |

@@ -31,14 +31,14 @@ jobs:
           cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
           cp -a docs/BEST_DISTRO.md docs/BUILD_FROM_SOURCE.md iso-content/ 2>/dev/null || true
 
-      - name: Create MBR boot sector (prints message + HLT)
+      - name: Create MBR boot sector (prints message + reboot)
         run: |
           dd if=/dev/zero of=mbr.bin bs=512 count=1 2>/dev/null
           # jmp short +0x2A, nop - jump to boot code
           printf '\xEB\x2A\x90' | dd of=mbr.bin bs=1 count=3 conv=notrunc 2>/dev/null
           printf 'ZONIX   ' | dd of=mbr.bin bs=1 seek=3 count=8 conv=notrunc 2>/dev/null
-          # Boot code: mov si,msg ; mov ah,0x0E ; lodsb ; or al,al ; jz halt ; int 0x10 ; jmp loop ; cli ; hlt
-          printf '\xBE\x1C\x7C\xB4\x0E\xAC\x0C\x00\x74\x05\xCD\x10\xEB\xF4\xFA\xF4' | dd of=mbr.bin bs=1 seek=36 count=16 conv=notrunc 2>/dev/null
+          # Boot code: mov si,msg ; mov ah,0x0E ; lodsb ; or al,al ; jz reboot ; int 0x10 ; jmp loop ; int 0x19
+          printf '\xBE\x34\x7C\xB4\x0E\xAC\x0C\x00\x74\x04\xCD\x10\xEB\xF4\xCD\x19' | dd of=mbr.bin bs=1 seek=36 count=16 conv=notrunc 2>/dev/null
           # Message at offset 52
           printf 'Zonix ISO Boot Sector\x00' | dd of=mbr.bin bs=1 seek=52 count=20 conv=notrunc 2>/dev/null
           # Boot signature 0x55AA

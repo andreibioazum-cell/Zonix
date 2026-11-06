@@ -25,6 +25,7 @@ jobs:
         run: |
           mkdir -p iso-content
           cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
+          cp -a docs/BEST_DISTRO.md iso-content/ 2>/dev/null || true
 
       - name: Create MBR boot sector (prints message + HLT)
         run: |
@@ -44,7 +45,7 @@ jobs:
 
       - name: Build bootable ISO with MBR as El Torito boot image
         run: |
-          cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
+          cp -a README.md CMakeLists.txt COPYING.DOC docs/BEST_DISTRO.md iso-content/ 2>/dev/null || true
           mkdir -p iso-content/boot/grub
           cp mbr.bin iso-content/boot/grub/mbr.bin
           xorriso -as mkisofs \

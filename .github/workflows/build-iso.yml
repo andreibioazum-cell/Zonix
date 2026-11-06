@@ -19,73 +19,21 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install tools
-        run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends xorriso zip python3
+        run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends grub-common grub-pc-bin xorriso zip
 
       - name: Prepare ISO content
         run: |
           mkdir -p iso-content
           cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
 
-      - name: Create MBR boot sector binary
-        run: |
-          python3 -c "
-data = bytearray(512)
-# Jump to boot code
-data[0] = 0xEB  # jmp short
-data[1] = 0x2A  # +42 bytes to boot code
-data[2] = 0x90  # nop
-# OEM name
-data[3:11] = b'ZONIX   '
-# BIOS Parameter Block (minimal)
-data[11:13] = (512).to_bytes(2, 'little')
-data[13] = 1
-data[14:16] = (1).to_bytes(2, 'little')
-data[16] = 1
-data[17:19] = (0).to_bytes(2, 'little')
-data[19:21] = (0).to_bytes(2, 'little')
-data[21] = 0xF8
-data[22:24] = (0).to_bytes(2, 'little')
-data[24:26] = (0).to_bytes(2, 'little')
-data[26:28] = (0).to_bytes(2, 'little')
-data[28:32] = (0).to_bytes(4, 'little')
-data[32:36] = (0).to_bytes(4, 'little')
-# Boot code at sector offset 36 (memory address 0x7C24)
-# mov si, 0x7C3A ; mov ah, 0x0E ; lodsb ; or al,al ; jz halt ; int 0x10 ; jmp loop ; cli ; hlt
-code = bytes([0xBE, 0x3A, 0x7C, 0xB4, 0x0E, 0xAC, 0x0C, 0x00, 0x74, 0x05, 0xCD, 0x10, 0xEB, 0xF4, 0xFA, 0xF4])
-data[36:36+len(code)] = code
-# Message right after code at sector offset 52 (memory address 0x7C34)
-msg = b'Zonix Boot Sector\x00'
-data[52:52+len(msg)] = msg
-# Boot signature
-data[510] = 0x55
-data[511] = 0xAA
-open('mbr.bin', 'wb').write(data)
-print(f'MBR size: {len(data)} bytes')
-print(f'Signature: {hex(data[510])}{hex(data[511])}')
-"
-          xxd -l 64 mbr.bin
+      - name: Build bootable ISO with grub-mkrescue
+        run: grub-mkrescue -o zonix.iso iso-content/ || true
 
-      - name: Build bootable ISO with MBR as El Torito image
-        run: |
-          cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
-          cp mbr.bin iso-content/boot/grub/mbr.bin
-          xorriso -as mkisofs \
-            -iso-level 3 \
-            -full-iso9660-filenames \
-            -volid "ZONIX" \
-            -boot-load-size 1 \
-            -boot-info-table \
-            -eltorito-boot boot/grub/mbr.bin \
-            -no-emul-boot \
-            -output zonix.iso \
-            iso-content/ || true
-
-      - name: Create raw HDD image with MBR boot sector
+      - name: Create raw HDD image with boot signature
         run: |
           dd if=/dev/zero of=zonix-hdd.img bs=1M count=50
-          dd if=mbr.bin of=zonix-hdd.img bs=512 count=1 conv=notrunc
+          printf '\x55\xAA' | dd of=zonix-hdd.img bs=1 seek=510 conv=notrunc
           echo "HDD image size: $(stat -c%s zonix-hdd.img) bytes"
-          xxd -l 64 zonix-hdd.img
 
       - name: Verify outputs
         run: |

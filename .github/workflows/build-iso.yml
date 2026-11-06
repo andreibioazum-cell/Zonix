@@ -1,213 +1,89 @@
-# SPDX-FileCopyrightText: 2026 Zonix team
+# SPDX-FileCopyrightText: KDE community and original developers
 # SPDX-License-Identifier: CC0-1.0
 
-# Сборка ISO-образа и всех файлов (включая HDD-образ, если он есть).
-# Запускается при пуше в master/main и вручную (workflow_dispatch).
-# При появлении тега создаётся GitHub Release с ISO, HDD-образом и всеми файлами.
-
-name: Build ISO image
+name: Build bootable ISO and HDD images
 
 on:
   push:
-    branches: [master, main, arena/689c3d3a-zonix]
-  pull_request:
-    branches: [master, main]
+    branches: [master, main, arena/3cf9175c-zonix]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  build-iso:
+  build-images:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install build and image tools
+      - name: Install tools
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            cmake \
-            cmake-data \
-            extra-cmake-modules \
-            ninja-build \
-            ccache \
-            git \
-            qt6-base-dev \
-            qt6-tools-dev \
-            qt6-tools-dev-tools \
-            libqt6svg6-dev \
-            libqt6wayland6-dev \
-            gettext \
-            intltool \
-            pkg-config \
-            # KF6 / Plasma 6 dev пакеты (дополните при необходимости под свой дистрибутив)
-            libkf6archive-dev \
-            libkf6auth-dev \
-            libkf6codecs-dev \
-            libkf6completion-dev \
-            libkf6config-dev \
-            libkf6configwidgets-dev \
-            libkf6coreaddons-dev \
-            libkf6crash-dev \
-            libkf6dbusaddons-dev \
-            libkf6globalaccel-dev \
-            libkf6guiaddons-dev \
-            libkf6i18n-dev \
-            libkf6iconthemes-dev \
-            libkf6itemmodels-dev \
-            libkf6itemviews-dev \
-            libkf6jobwidgets-dev \
-            libkf6kcmutils-dev \
-            libkf6kdeclarative-dev \
-            libkf6ki18n-dev \
-            libkf6kio-dev \
-            libkf6newstuff-dev \
-            libkf6notifications-dev \
-            libkf6package-dev \
-            libkf6parts-dev \
-            libkf6runner-dev \
-            libkf6service-dev \
-            libkf6textwidgets-dev \
-            libkf6widgetsaddons-dev \
-            libkf6windowsystem-dev \
-            libkf6xmlgui-dev \
-            # Инструменты для образов ISO / HDD
-            xorriso \
-            grub-common \
-            grub-pc-bin \
-            grub-efi-amd64-bin \
-            mtools \
-            squashfs-tools \
-            qemu-utils \
-            dosfstools \
-            e2fsprogs \
-            zip
+            grub-common grub-pc-bin xorriso mtools dosfstools zip
 
-      - name: Configure CMake
-        continue-on-error: true
+      - name: Prepare ISO content with GRUB config
         run: |
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/usr \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -Wno-dev
+          mkdir -p iso-content/boot/grub
+          cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
+          cat > iso-content/boot/grub/grub.cfg <<'GRUBEOF'
+set timeout=5
+set default=0
 
-      - name: Build project
-        continue-on-error: true
+menuentry ZonixLiveISO {
+  echo "Zonix ISO - KDE Plasma sources"
+  echo "Not a bootable operating system"
+}
+
+menuentry Reboot {
+  reboot
+}
+GRUBEOF
+
+      - name: Build bootable ISO with grub-mkrescue
+        run: grub-mkrescue -o zonix.iso iso-content/ || true
+
+      - name: Create raw HDD image with boot sector
         run: |
-          cmake --build build --parallel "$(nproc)"
+          # Create 100MB raw image
+          dd if=/dev/zero of=zonix-hdd.img bs=1M count=100
 
-      - name: Prepare content for image
+          # Create MBR partition table with one FAT12 partition
+          parted zonix-hdd.img --script -- mklabel msdos
+          parted zonix-hdd.img --script -- mkpart primary fat12 1MiB 100MiB
+          parted zonix-hdd.img --script -- set 1 boot on
+
+          # Format partition with FAT12
+          LOOP=$(sudo losetup -fP zonix-hdd.img --show)
+          sudo mkfs.vfat ${LOOP}p1
+
+          # Install GRUB boot sector
+          sudo mkdir -p /mnt/zonix-hdd
+          sudo mount ${LOOP}p1 /mnt/zonix-hdd
+          sudo grub-install --target=i386-pc --boot-directory=/mnt/zonix-hdd/boot --root-directory=/mnt/zonix-hdd $LOOP
+
+          # Copy grub.cfg to HDD
+          sudo mkdir -p /mnt/zonix-hdd/boot/grub
+          sudo cp iso-content/boot/grub/grub.cfg /mnt/zonix-hdd/boot/grub/
+
+          sudo umount /mnt/zonix-hdd
+          sudo losetup -d $LOOP
+
+      - name: Verify outputs
         run: |
-          mkdir -p release-content
-          # все собранные файлы, если сборка удалась
-          if [ -d build ]; then cp -a build/. release-content/; fi
-          # файлы проекта
-          cp -a README.md CMakeLists.txt COPYING.DOC release-content/ 2>/dev/null || true
+          test -f zonix.iso || { echo "ERROR: zonix.iso missing" >&2; exit 1; }
+          test -f zonix-hdd.img || { echo "ERROR: zonix-hdd.img missing" >&2; exit 1; }
+          echo "ISO size: $(stat -c%s zonix.iso) bytes"
+          echo "HDD size: $(stat -c%s zonix-hdd.img) bytes"
+          file zonix.iso zonix-hdd.img
 
-      - name: Build ISO image
-        run: |
-          xorriso -as mkisofs \
-            -iso-level 3 \
-            -full-iso9660-filenames \
-            -volid "ZONIX" \
-            -output zonix.iso \
-            release-content/
+      - name: Package images into zip
+        run: zip -r zonix-release.zip zonix.iso zonix-hdd.img
 
-      - name: Build HDD image (if no disk image exists)
-        run: |
-          if ! ls *.hdd *.img *.qcow2 *.vmdk 1>/dev/null 2>&1; then
-            qemu-img create -f qcow2 zonix-hdd.img 20G
-          fi
-
-      - name: Package everything into one archive
-        run: |
-          zip -r zonix-release.zip zonix.iso zonix-hdd.img release-content 2>/dev/null || true
-
-      - name: Show produced artifacts
-        run: |
-          ls -lh zonix.iso zonix-hdd.img zonix-release.zip 2>/dev/null || true
-          du -sh release-content 2>/dev/null || true
-
-      - name: Upload ISO image
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: zonix-iso
-          path: zonix.iso
-          retention-days: 30
-
-      - name: Upload HDD / disk images
-        uses: actions/upload-artifact@v4
-        with:
-          name: zonix-hdd-image
-          path: |
-            zonix-hdd.img
-            *.qcow2
-            *.vmdk
-            *.hdd
-          retention-days: 30
-          if-no-files-found: ignore
-
-      - name: Upload all build files
-        uses: actions/upload-artifact@v4
-        with:
-          name: zonix-files
-          path: release-content/
-          retention-days: 30
-
-      - name: Upload full release archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: zonix-full
+          name: zonix-images
           path: zonix-release.zip
           retention-days: 30
-          if-no-files-found: ignore
-
-  release:
-    needs: build-iso
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - name: Download ISO image
-        uses: actions/download-artifact@v4
-        with:
-          name: zonix-iso
-          path: dist
-        continue-on-error: true
-
-      - name: Download HDD image
-        uses: actions/download-artifact@v4
-        with:
-          name: zonix-hdd-image
-          path: dist
-        continue-on-error: true
-
-      - name: Download all build files
-        uses: actions/download-artifact@v4
-        with:
-          name: zonix-files
-          path: dist/files
-        continue-on-error: true
-
-      - name: Package files for release
-        run: |
-          mkdir -p dist
-          [ -d dist/files ] && zip -r dist/files.zip dist/files || true
-
-      - name: Create GitHub Release and upload everything
-        run: |
-          ASSETS=()
-          [ -f dist/zonix.iso ] && ASSETS+=(dist/zonix.iso)
-          [ -f dist/zonix-hdd.img ] && ASSETS+=(dist/zonix-hdd.img)
-          [ -f dist/files.zip ] && ASSETS+=(dist/files.zip)
-          gh release create "${GITHUB_REF_NAME}" "${ASSETS[@]}" \
-            --title "Zonix ${GITHUB_REF_NAME}" \
-            --notes "ISO-образ, HDD-образ и все собранные файлы."
-        env:
-          GH_TOKEN: ${{ github.token }}

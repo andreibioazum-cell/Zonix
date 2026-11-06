@@ -20,101 +20,41 @@ jobs:
 
       - name: Install tools
         run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends \
-            xorriso zip python3
+            grub-common grub-pc-bin xorriso zip
 
-      - name: Prepare ISO content
+      - name: Prepare ISO content with GRUB config
         run: |
-          mkdir -p iso-content
+          mkdir -p iso-content/boot/grub
           cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
           cp -a docs/BEST_DISTRO.md iso-content/ 2>/dev/null || true
           cp -a docs/BUILD_FROM_SOURCE.md iso-content/ 2>/dev/null || true
           cp -a plasma-desktop iso-content/ 2>/dev/null || true
           cp -a browser-integration iso-content/ 2>/dev/null || true
           cp -a assets iso-content/ 2>/dev/null || true
+          cat > iso-content/boot/grub/grub.cfg <<'GRUBEOF'
+set timeout=10
+set default=0
 
-      - name: Create MBR boot sector (prints Zonix message + HLT)
-        run: |
-          python3 -c "
-import struct
+menuentry ZonixLiveISO {
+  echo "Zonix ISO - KDE Plasma sources"
+  echo "Not a bootable operating system"
+  echo "Use: startplasma-wayland  or  startplasma-x11"
+  halt
+}
 
-# Create 512-byte MBR filled with zeros
-data = bytearray(512)
+menuentry Reboot {
+  reboot
+}
+GRUBEOF
 
-# Offset 0-2: Jump instruction (jmp short +0x2A, nop)
-data[0] = 0xEB
-data[1] = 0x2A
-data[2] = 0x90
+      - name: Build bootable ISO with grub-mkrescue
+        run: grub-mkrescue -o zonix.iso iso-content/ || true
 
-# Offset 3-10: OEM name 'ZONIX   '
-oem = b'ZONIX   '
-data[3:11] = oem
-
-# Offset 11-35: BIOS Parameter Block (mostly zeros)
-data[11:13] = (512).to_bytes(2, 'little')  # bytes per sector
-data[13] = 1                                # sectors per cluster
-data[14:16] = (1).to_bytes(2, 'little')    # reserved sectors
-data[16] = 1                                # FAT count
-data[17:19] = (0).to_bytes(2, 'little')    # root entries
-data[19:21] = (0).to_bytes(2, 'little')    # total sectors 16-bit
-data[21] = 0xF8                             # media descriptor
-data[22:24] = (0).to_bytes(2, 'little')    # sectors per FAT
-data[24:26] = (0).to_bytes(2, 'little')    # sectors per track
-data[26:28] = (0).to_bytes(2, 'little')    # heads
-data[28:32] = (0).to_bytes(4, 'little')    # hidden sectors
-data[32:36] = (0).to_bytes(4, 'little')    # total sectors 32-bit
-
-# Offset 36-51: Boot code
-# mov si, 0x7C34 ; mov ah, 0x0E ; lodsb ; or al,al ; jz halt ; int 0x10 ; jmp loop ; cli ; hlt
-boot_code = bytes([
-    0xBE, 0x34, 0x7C,  # mov si, 0x7C34
-    0xB4, 0x0E,        # mov ah, 0x0E
-    0xAC,              # lodsb
-    0x0C, 0x00,        # or al, al
-    0x74, 0x05,        # jz halt
-    0xCD, 0x10,        # int 0x10
-    0xEB, 0xF4,        # jmp loop
-    0xFA,              # cli
-    0xF4,              # hlt
-])
-data[36:36+len(boot_code)] = boot_code
-
-# Offset 52-72: Message 'Zonix ISO Boot Sector\0'
-msg = b'Zonix ISO Boot Sector\x00'
-data[52:52+len(msg)] = msg
-
-# Offset 510-511: Boot signature 0x55AA
-data[510] = 0x55
-data[511] = 0xAA
-
-with open('mbr.bin', 'wb') as f:
-    f.write(data)
-
-print(f'MBR size: {len(data)} bytes')
-print(f'Signature: {hex(data[510])}{hex(data[511])}')
-print(f'Boot code at offset 36: {data[36:52].hex()}')
-print(f'Message at offset 52: {msg}')
-"
-
-      - name: Build bootable ISO with MBR as El Torito boot image
-        run: |
-          mkdir -p iso-content/boot/grub
-          cp mbr.bin iso-content/boot/grub/mbr.bin
-          xorriso -as mkisofs \
-            -iso-level 3 \
-            -full-iso9660-filenames \
-            -volid "ZONIX" \
-            -boot-load-size 1 \
-            -boot-info-table \
-            -eltorito-boot boot/grub/mbr.bin \
-            -no-emul-boot \
-            -output zonix.iso \
-            iso-content/ || true
-
-      - name: Create raw HDD image with MBR boot sector
+      - name: Create raw HDD image (NOT bootable - let BIOS fall through to CD)
         run: |
           dd if=/dev/zero of=zonix-hdd.img bs=1M count=50
-          dd if=mbr.bin of=zonix-hdd.img bs=512 count=1 conv=notrunc
           echo "HDD image size: $(stat -c%s zonix-hdd.img) bytes"
+          echo "No boot signature on HDD - BIOS will fall through to CD ISO"
 
       - name: Verify outputs
         run: |

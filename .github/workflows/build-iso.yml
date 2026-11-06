@@ -19,21 +19,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install tools
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y --no-install-recommends \
-            grub-common grub-pc-bin xorriso mtools dosfstools zip
+        run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends \
+            grub-common grub-pc-bin xorriso zip
 
       - name: Prepare ISO content with GRUB config
         run: |
           mkdir -p iso-content/boot/grub
           cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
-          echo 'set timeout=5' > iso-content/boot/grub/grub.cfg
+          echo 'set timeout=10' > iso-content/boot/grub/grub.cfg
           echo 'set default=0' >> iso-content/boot/grub/grub.cfg
           echo '' >> iso-content/boot/grub/grub.cfg
           echo 'menuentry ZonixLiveISO {' >> iso-content/boot/grub/grub.cfg
           echo '  echo "Zonix ISO - KDE Plasma sources"' >> iso-content/boot/grub/grub.cfg
-          echo '  echo "Not a bootable operating system"' >> iso-content/boot/grub/grub.cfg
+          echo '  echo "Booting from CD..."' >> iso-content/boot/grub/grub.cfg
           echo '}' >> iso-content/boot/grub/grub.cfg
           echo '' >> iso-content/boot/grub/grub.cfg
           echo 'menuentry Reboot {' >> iso-content/boot/grub/grub.cfg
@@ -43,19 +41,12 @@ jobs:
       - name: Build bootable ISO with grub-mkrescue
         run: grub-mkrescue -o zonix.iso iso-content/ || true
 
-      - name: Create raw HDD image with boot sector
+      - name: Create raw HDD image (NOT bootable - let BIOS fall through to CD)
         run: |
-          # Create 50MB raw image filled with zeros
+          # Create 50MB raw image WITHOUT boot signature - BIOS will skip it and boot from CD
           dd if=/dev/zero of=zonix-hdd.img bs=1M count=50
-
-          # Write boot signature 0x55AA at offset 510 (makes disk bootable)
-          printf '\x55\xAA' | dd of=zonix-hdd.img bs=1 seek=510 conv=notrunc
-
-          # Add minimal boot code: infinite loop (jmp $+2, nop)
-          printf '\xEB\xFE\x90' | dd of=zonix-hdd.img bs=1 count=3 conv=notrunc
-
           echo "HDD image size: $(stat -c%s zonix-hdd.img) bytes"
-          xxd -l 64 zonix-hdd.img
+          echo "No boot signature on HDD - BIOS will fall through to CD ISO"
 
       - name: Verify outputs
         run: |
@@ -73,4 +64,3 @@ jobs:
           name: zonix-images
           path: zonix-release.zip
           retention-days: 30
-

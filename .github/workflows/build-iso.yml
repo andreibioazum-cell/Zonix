@@ -19,7 +19,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install tools
-        run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends xorriso zip
+        run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends \
+            grub-common grub-pc-bin xorriso zip nasm
 
       - name: Prepare ISO content
         run: |
@@ -27,30 +28,38 @@ jobs:
           cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
           cp -a docs/BEST_DISTRO.md iso-content/ 2>/dev/null || true
           cp -a docs/BUILD_FROM_SOURCE.md iso-content/ 2>/dev/null || true
-          cp -a plasma-desktop iso-content/ 2>/dev/null || true
-          cp -a browser-integration iso-content/ 2>/dev/null || true
-          cp -a assets iso-content/ 2>/dev/null || true
-          cp -a docs/BEST_DISTRO.md iso-content/ 2>/dev/null || true
 
-      - name: Create MBR boot sector (prints message + HLT)
+      - name: Create MBR boot sector (prints Zonix message + HLT)
         run: |
+          # Create 512-byte MBR filled with zeros
           dd if=/dev/zero of=mbr.bin bs=512 count=1 2>/dev/null
-          # jmp short +0x2A, nop - jump to boot code
+
+          # Offset 0-2: Jump instruction (jmp short +0x2A, nop)
           printf '\xEB\x2A\x90' | dd of=mbr.bin bs=1 count=3 conv=notrunc 2>/dev/null
+
+          # Offset 3-10: OEM name "ZONIX   " (8 bytes)
           printf 'ZONIX   ' | dd of=mbr.bin bs=1 seek=3 count=8 conv=notrunc 2>/dev/null
-          # Boot code: mov si,msg ; mov ah,0x0E ; lodsb ; or al,al ; jz halt ; int 0x10 ; jmp loop ; cli ; hlt
-          printf '\xBE\x1C\x7C\xB4\x0E\xAC\x0C\x00\x74\x05\xCD\x10\xEB\xF4\xFA\xF4' | dd of=mbr.bin bs=1 seek=36 count=16 conv=notrunc 2>/dev/null
-          # Message at offset 52
-          printf 'Zonix ISO Boot Sector\x00' | dd of=mbr.bin bs=1 seek=52 count=20 conv=notrunc 2>/dev/null
-          # Boot signature
+
+          # Offset 11-35: BIOS Parameter Block (25 bytes, mostly zeros)
+          printf '\x00\x02\x01\x00\x01\x00\xF8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' | dd of=mbr.bin bs=1 seek=11 count=25 conv=notrunc 2>/dev/null
+
+          # Offset 36-51: Boot code (16 bytes)
+          # mov si, 0x7C34 ; mov ah, 0x0E ; lodsb ; or al,al ; jz halt ; int 0x10 ; jmp loop ; cli ; hlt
+          printf '\xBE\x34\x7C\xB4\x0E\xAC\x0C\x00\x74\x05\xCD\x10\xEB\xF4\xFA\xF4' | dd of=mbr.bin bs=1 seek=36 count=16 conv=notrunc 2>/dev/null
+
+          # Offset 52-72: Message "Zonix ISO Boot Sector\0" (21 bytes)
+          printf 'Zonix ISO Boot Sector\0' | dd of=mbr.bin bs=1 seek=52 count=21 conv=notrunc 2>/dev/null
+
+          # Offset 510-511: Boot signature 0x55AA
           printf '\x55\xAA' | dd of=mbr.bin bs=1 seek=510 count=2 conv=notrunc 2>/dev/null
-          echo "MBR size: $(stat -c%s mbr.bin) bytes"
-          xxd -l 16 mbr.bin
+
+          echo "MBR created:"
+          xxd -l 64 mbr.bin
+          echo "..."
           xxd -s 510 -l 2 mbr.bin
 
       - name: Build bootable ISO with MBR as El Torito boot image
         run: |
-          cp -a README.md CMakeLists.txt COPYING.DOC docs/BEST_DISTRO.md iso-content/ 2>/dev/null || true
           mkdir -p iso-content/boot/grub
           cp mbr.bin iso-content/boot/grub/mbr.bin
           xorriso -as mkisofs \

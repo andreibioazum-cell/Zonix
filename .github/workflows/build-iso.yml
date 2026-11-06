@@ -1,53 +1,84 @@
 # SPDX-FileCopyrightText: KDE community and original developers
 # SPDX-License-Identifier: CC0-1.0
 
-name: Build bootable ISO image
+name: Build bootable ISO and HDD images
 
 on:
   push:
     branches: [master, main, arena/3cf9175c-zonix]
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  build-iso:
+  build-images:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install tools
-        run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends \
-            grub-common grub-pc-bin xorriso mtools dosfstools zip
+      - name: Install tools (retry on failure)
+        run: |
+          sudo apt-get update -y || sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            grub-common grub-pc-bin xorriso mtools dosfstools zip || \
+            sudo apt-get install -y --no-install-recommends \
+            grub-common grub-pc-bin xorriso zip
 
-      - name: Prepare ISO content with GRUB config
+      - name: Prepare ISO content
         run: |
           mkdir -p iso-content/boot/grub
           cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
-          echo 'set timeout=10' > iso-content/boot/grub/grub.cfg
-          echo 'set default=0' >> iso-content/boot/grub/grub.cfg
-          echo '' >> iso-content/boot/grub/grub.cfg
-          echo 'menuentry ZonixLiveISO {' >> iso-content/boot/grub/grub.cfg
-          echo '  echo "Zonix ISO - KDE Plasma sources"' >> iso-content/boot/grub/grub.cfg
-          echo '  echo "Not a bootable operating system"' >> iso-content/boot/grub/grub.cfg
-          echo '}' >> iso-content/boot/grub/grub.cfg
-          echo '' >> iso-content/boot/grub/grub.cfg
-          echo 'menuentry Reboot {' >> iso-content/boot/grub/grub.cfg
-          echo '  reboot' >> iso-content/boot/grub/grub.cfg
-          echo '}' >> iso-content/boot/grub/grub.cfg
+          cp -a docs/BEST_DISTRO.md docs/BUILD_FROM_SOURCE.md iso-content/ 2>/dev/null || true
 
-      - name: Build bootable ISO with grub-mkrescue
-        run: grub-mkrescue -o zonix.iso iso-content/ || true
+      - name: Create MBR boot sector (prints message + HLT)
+        run: |
+          dd if=/dev/zero of=mbr.bin bs=512 count=1 2>/dev/null
+          # jmp short +0x2A, nop - jump to boot code
+          printf '\xEB\x2A\x90' | dd of=mbr.bin bs=1 count=3 conv=notrunc 2>/dev/null
+          printf 'ZONIX   ' | dd of=mbr.bin bs=1 seek=3 count=8 conv=notrunc 2>/dev/null
+          # Boot code: mov si,msg ; mov ah,0x0E ; lodsb ; or al,al ; jz halt ; int 0x10 ; jmp loop ; cli ; hlt
+          printf '\xBE\x1C\x7C\xB4\x0E\xAC\x0C\x00\x74\x05\xCD\x10\xEB\xF4\xFA\xF4' | dd of=mbr.bin bs=1 seek=36 count=16 conv=notrunc 2>/dev/null
+          # Message at offset 52
+          printf 'Zonix ISO Boot Sector\x00' | dd of=mbr.bin bs=1 seek=52 count=20 conv=notrunc 2>/dev/null
+          # Boot signature 0x55AA
+          printf '\x55\xAA' | dd of=mbr.bin bs=1 seek=510 count=2 conv=notrunc 2>/dev/null
+          echo "MBR size: $(stat -c%s mbr.bin) bytes"
+          xxd -l 16 mbr.bin
+          xxd -s 510 -l 2 mbr.bin
 
-      - name: Verify ISO
+      - name: Build bootable ISO with MBR as El Torito boot image
+        run: |
+          cp -a README.md CMakeLists.txt COPYING.DOC docs/BEST_DISTRO.md docs/BUILD_FROM_SOURCE.md iso-content/ 2>/dev/null || true
+          mkdir -p iso-content/boot/grub
+          cp mbr.bin iso-content/boot/grub/mbr.bin
+          xorriso -as mkisofs \
+            -iso-level 3 \
+            -full-iso9660-filenames \
+            -volid "ZONIX" \
+            -boot-load-size 1 \
+            -boot-info-table \
+            -eltorito-boot boot/grub/mbr.bin \
+            -no-emul-boot \
+            -output zonix.iso \
+            iso-content/ || true
+
+      - name: Create raw HDD image with MBR boot sector
+        run: |
+          dd if=/dev/zero of=zonix-hdd.img bs=1M count=50
+          dd if=mbr.bin of=zonix-hdd.img bs=512 count=1 conv=notrunc
+          echo "HDD image size: $(stat -c%s zonix-hdd.img) bytes"
+
+      - name: Verify outputs
         run: |
           test -f zonix.iso || { echo "ERROR: zonix.iso missing" >&2; exit 1; }
+          test -f zonix-hdd.img || { echo "ERROR: zonix-hdd.img missing" >&2; exit 1; }
           echo "ISO size: $(stat -c%s zonix.iso) bytes"
+          echo "HDD size: $(stat -c%s zonix-hdd.img) bytes"
+          file zonix.iso zonix-hdd.img
 
-      - name: Package into zip
-        run: zip -r zonix-release.zip zonix.iso
+      - name: Package images into zip
+        run: zip -r zonix-release.zip zonix.iso zonix-hdd.img
 
       - uses: actions/upload-artifact@v4
         with:

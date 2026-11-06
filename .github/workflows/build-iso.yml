@@ -22,7 +22,7 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
-            grub-common grub-pc-bin xorriso mtools dosfstools zip
+            grub-common grub-pc-bin xorriso mtools dosfstools parted zip
 
       - name: Prepare ISO content with GRUB config
         run: |
@@ -47,24 +47,27 @@ GRUBEOF
 
       - name: Create raw HDD image with boot sector
         run: |
-          # Create 100MB raw image
-          dd if=/dev/zero of=zonix-hdd.img bs=1M count=100
+          # Create 50MB raw image
+          dd if=/dev/zero of=zonix-hdd.img bs=1M count=50
 
-          # Create MBR partition table with one FAT12 partition
-          parted zonix-hdd.img --script -- mklabel msdos
-          parted zonix-hdd.img --script -- mkpart primary fat12 1MiB 100MiB
-          parted zonix-hdd.img --script -- set 1 boot on
+          # Create loop device
+          LOOP=$(sudo losetup -f --show zonix-hdd.img)
+          echo "Using loop device: $LOOP"
 
-          # Format partition with FAT12
-          LOOP=$(sudo losetup -fP zonix-hdd.img --show)
+          # Create MBR partition table with one bootable FAT12 partition
+          sudo parted $LOOP --script -- mklabel msdos
+          sudo parted $LOOP --script -- mkpart primary fat12 1MiB 50MiB
+          sudo parted $LOOP --script -- set 1 boot on
+
+          # Format partition
           sudo mkfs.vfat ${LOOP}p1
 
-          # Install GRUB boot sector
+          # Mount and install GRUB
           sudo mkdir -p /mnt/zonix-hdd
           sudo mount ${LOOP}p1 /mnt/zonix-hdd
           sudo grub-install --target=i386-pc --boot-directory=/mnt/zonix-hdd/boot --root-directory=/mnt/zonix-hdd $LOOP
 
-          # Copy grub.cfg to HDD
+          # Copy GRUB config
           sudo mkdir -p /mnt/zonix-hdd/boot/grub
           sudo cp iso-content/boot/grub/grub.cfg /mnt/zonix-hdd/boot/grub/
 

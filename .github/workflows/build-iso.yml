@@ -20,7 +20,7 @@ jobs:
 
       - name: Install tools
         run: sudo apt-get update -y && sudo apt-get install -y --no-install-recommends \
-            grub-common grub-pc-bin xorriso zip nasm
+            xorriso zip python3
 
       - name: Prepare ISO content
         run: |
@@ -28,35 +28,72 @@ jobs:
           cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
           cp -a docs/BEST_DISTRO.md iso-content/ 2>/dev/null || true
           cp -a docs/BUILD_FROM_SOURCE.md iso-content/ 2>/dev/null || true
+          cp -a plasma-desktop iso-content/ 2>/dev/null || true
+          cp -a browser-integration iso-content/ 2>/dev/null || true
+          cp -a assets iso-content/ 2>/dev/null || true
 
       - name: Create MBR boot sector (prints Zonix message + HLT)
         run: |
-          # Create 512-byte MBR filled with zeros
-          dd if=/dev/zero of=mbr.bin bs=512 count=1 2>/dev/null
+          python3 -c "
+import struct
 
-          # Offset 0-2: Jump instruction (jmp short +0x2A, nop)
-          printf '\xEB\x2A\x90' | dd of=mbr.bin bs=1 count=3 conv=notrunc 2>/dev/null
+# Create 512-byte MBR filled with zeros
+data = bytearray(512)
 
-          # Offset 3-10: OEM name "ZONIX   " (8 bytes)
-          printf 'ZONIX   ' | dd of=mbr.bin bs=1 seek=3 count=8 conv=notrunc 2>/dev/null
+# Offset 0-2: Jump instruction (jmp short +0x2A, nop)
+data[0] = 0xEB
+data[1] = 0x2A
+data[2] = 0x90
 
-          # Offset 11-35: BIOS Parameter Block (25 bytes, mostly zeros)
-          printf '\x00\x02\x01\x00\x01\x00\xF8\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' | dd of=mbr.bin bs=1 seek=11 count=25 conv=notrunc 2>/dev/null
+# Offset 3-10: OEM name 'ZONIX   '
+oem = b'ZONIX   '
+data[3:11] = oem
 
-          # Offset 36-51: Boot code (16 bytes)
-          # mov si, 0x7C34 ; mov ah, 0x0E ; lodsb ; or al,al ; jz halt ; int 0x10 ; jmp loop ; cli ; hlt
-          printf '\xBE\x34\x7C\xB4\x0E\xAC\x0C\x00\x74\x05\xCD\x10\xEB\xF4\xFA\xF4' | dd of=mbr.bin bs=1 seek=36 count=16 conv=notrunc 2>/dev/null
+# Offset 11-35: BIOS Parameter Block (mostly zeros)
+data[11:13] = (512).to_bytes(2, 'little')  # bytes per sector
+data[13] = 1                                # sectors per cluster
+data[14:16] = (1).to_bytes(2, 'little')    # reserved sectors
+data[16] = 1                                # FAT count
+data[17:19] = (0).to_bytes(2, 'little')    # root entries
+data[19:21] = (0).to_bytes(2, 'little')    # total sectors 16-bit
+data[21] = 0xF8                             # media descriptor
+data[22:24] = (0).to_bytes(2, 'little')    # sectors per FAT
+data[24:26] = (0).to_bytes(2, 'little')    # sectors per track
+data[26:28] = (0).to_bytes(2, 'little')    # heads
+data[28:32] = (0).to_bytes(4, 'little')    # hidden sectors
+data[32:36] = (0).to_bytes(4, 'little')    # total sectors 32-bit
 
-          # Offset 52-72: Message "Zonix ISO Boot Sector\0" (21 bytes)
-          printf 'Zonix ISO Boot Sector\0' | dd of=mbr.bin bs=1 seek=52 count=21 conv=notrunc 2>/dev/null
+# Offset 36-51: Boot code
+# mov si, 0x7C34 ; mov ah, 0x0E ; lodsb ; or al,al ; jz halt ; int 0x10 ; jmp loop ; cli ; hlt
+boot_code = bytes([
+    0xBE, 0x34, 0x7C,  # mov si, 0x7C34
+    0xB4, 0x0E,        # mov ah, 0x0E
+    0xAC,              # lodsb
+    0x0C, 0x00,        # or al, al
+    0x74, 0x05,        # jz halt
+    0xCD, 0x10,        # int 0x10
+    0xEB, 0xF4,        # jmp loop
+    0xFA,              # cli
+    0xF4,              # hlt
+])
+data[36:36+len(boot_code)] = boot_code
 
-          # Offset 510-511: Boot signature 0x55AA
-          printf '\x55\xAA' | dd of=mbr.bin bs=1 seek=510 count=2 conv=notrunc 2>/dev/null
+# Offset 52-72: Message 'Zonix ISO Boot Sector\0'
+msg = b'Zonix ISO Boot Sector\x00'
+data[52:52+len(msg)] = msg
 
-          echo "MBR created:"
-          xxd -l 64 mbr.bin
-          echo "..."
-          xxd -s 510 -l 2 mbr.bin
+# Offset 510-511: Boot signature 0x55AA
+data[510] = 0x55
+data[511] = 0xAA
+
+with open('mbr.bin', 'wb') as f:
+    f.write(data)
+
+print(f'MBR size: {len(data)} bytes')
+print(f'Signature: {hex(data[510])}{hex(data[511])}')
+print(f'Boot code at offset 36: {data[36:52].hex()}')
+print(f'Message at offset 52: {msg}')
+"
 
       - name: Build bootable ISO with MBR as El Torito boot image
         run: |

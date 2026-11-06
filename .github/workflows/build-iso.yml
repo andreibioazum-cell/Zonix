@@ -36,6 +36,9 @@ jobs:
           echo 'menuentry ZonixLiveISO {' >> iso-content/boot/grub/grub.cfg
           echo '  echo "Zonix ISO - KDE Plasma sources"' >> iso-content/boot/grub/grub.cfg
           echo '  echo "Booting from CD..."' >> iso-content/boot/grub/grub.cfg
+          echo '  echo "This ISO contains source files only."' >> iso-content/boot/grub/grub.cfg
+          echo '  echo "Press ESC to return to menu."' >> iso-content/boot/grub/grub.cfg
+          echo '  return' >> iso-content/boot/grub/grub.cfg
           echo '}' >> iso-content/boot/grub/grub.cfg
           echo '' >> iso-content/boot/grub/grub.cfg
           echo 'menuentry Reboot {' >> iso-content/boot/grub/grub.cfg

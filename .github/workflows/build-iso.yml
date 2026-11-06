@@ -28,19 +28,17 @@ jobs:
         run: |
           mkdir -p iso-content/boot/grub
           cp -a README.md CMakeLists.txt COPYING.DOC iso-content/ 2>/dev/null || true
-          cat > iso-content/boot/grub/grub.cfg <<'GRUBEOF'
-set timeout=5
-set default=0
-
-menuentry ZonixLiveISO {
-  echo "Zonix ISO - KDE Plasma sources"
-  echo "Not a bootable operating system"
-}
-
-menuentry Reboot {
-  reboot
-}
-GRUBEOF
+          echo 'set timeout=5' > iso-content/boot/grub/grub.cfg
+          echo 'set default=0' >> iso-content/boot/grub/grub.cfg
+          echo '' >> iso-content/boot/grub/grub.cfg
+          echo 'menuentry ZonixLiveISO {' >> iso-content/boot/grub/grub.cfg
+          echo '  echo "Zonix ISO - KDE Plasma sources"' >> iso-content/boot/grub/grub.cfg
+          echo '  echo "Not a bootable operating system"' >> iso-content/boot/grub/grub.cfg
+          echo '}' >> iso-content/boot/grub/grub.cfg
+          echo '' >> iso-content/boot/grub/grub.cfg
+          echo 'menuentry Reboot {' >> iso-content/boot/grub/grub.cfg
+          echo '  reboot' >> iso-content/boot/grub/grub.cfg
+          echo '}' >> iso-content/boot/grub/grub.cfg
 
       - name: Build bootable ISO with grub-mkrescue
         run: grub-mkrescue -o zonix.iso iso-content/ || true
